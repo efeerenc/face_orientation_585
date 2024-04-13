@@ -94,7 +94,7 @@ class Linear(Layer):
         self.b = self.b - lr*self.db
 
     def __str__(self):
-        return f"Linear{'' if self.id==None else ' ' + str(self.id)}: ({self.input_size}, 1) -> ({self.output_size, 1})"
+        return f"Linear{'' if self.id==None else ' ' + str(self.id)}: ({self.input_size}, 1) -> ({self.output_size}, 1)"
 
 
 class Conv2d(Layer):
