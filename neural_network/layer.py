@@ -40,6 +40,7 @@ class Loss(Layer):
     def __init__(self, parents=None):
         super().__init__(parents)
 
+
 class Linear(Layer):
 
 
@@ -85,6 +86,14 @@ class Linear(Layer):
         self.W = self.W - lr*self.dW
         self.b = self.b - lr*self.db
 
+
+class Conv2d(Layer):
+
+    def __init__(self, input_size, output_size, kernel_size, parents=None, stride=1, padding=0, dilation=1):
+
+        super().__init__([parents])
+
+        pass
 
 class Sigmoid(Layer):
 
@@ -148,6 +157,9 @@ class ReLU(Layer):
         pass
 
 
+class Softmax(Layer):
+    pass
+
 class Addition(Layer):
 
 
@@ -185,6 +197,7 @@ class Addition(Layer):
         Update parameters after self.backward() w.r.t. given learning rate (lr)
         """
         return
+
 
 class MSE_Loss(Loss):
 
