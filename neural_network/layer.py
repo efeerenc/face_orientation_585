@@ -1,11 +1,12 @@
 import numpy as np
 from neural_network.utils import weight_init
 
+import random
 
 class Layer():
 
 
-    def __init__(self, parents=[]):
+    def __init__(self, parents=[], layer_id=None):
 
         if any(elem is None for elem in parents):
             parents = []
@@ -13,6 +14,9 @@ class Layer():
         self.parents = parents
         self.children = []
 
+        self.id = layer_id
+        self.input = None
+        self.out = None
         
         for parent in parents:
             parent.children.append(self)
@@ -36,18 +40,21 @@ class Layer():
         pass
 
 
+
 class Loss(Layer):
-    def __init__(self, parents=None):
-        super().__init__(parents)
+    def __init__(self, parents=None, layer_id=None):
+        super().__init__(parents, layer_id=layer_id)
 
 
 class Linear(Layer):
 
 
-    def __init__(self, input_size, output_size, parents=None):
+    def __init__(self, input_size, output_size, parents=None, layer_id=None):
 
-        super().__init__([parents])
+        super().__init__([parents], layer_id=layer_id)
 
+        self.input_size = input_size
+        self.output_size = output_size
         self.W, self.b = weight_init(input_size, output_size)
         self.dW, self.db = 0, 0
         self.input = None
@@ -86,22 +93,25 @@ class Linear(Layer):
         self.W = self.W - lr*self.dW
         self.b = self.b - lr*self.db
 
+    def __str__(self):
+        return f"Linear{'' if self.id==None else ' ' + str(self.id)}: ({self.input_size}, 1) -> ({self.output_size, 1})"
+
 
 class Conv2d(Layer):
 
-    def __init__(self, input_size, output_size, kernel_size, parents=None, stride=1, padding=0, dilation=1):
+    def __init__(self, input_size, output_size, kernel_size, parents=None, stride=1, padding=0, dilation=1, layer_id=None):
 
-        super().__init__([parents])
+        super().__init__([parents], layer_id=layer_id)
 
         pass
 
 class Sigmoid(Layer):
 
     
-    def __init__(self, parents=None):     
+    def __init__(self, parents=None, layer_id=None):     
         
         self.out = None
-        super().__init__([parents])
+        super().__init__([parents], layer_id=layer_id)
 
     def forward(self, x):
         """
@@ -125,13 +135,16 @@ class Sigmoid(Layer):
     def update(self, lr):
         pass
 
+    def __str__(self) -> str:
+        return f"Sigmoid{'' if self.id==None else ' ' + str(self.id)}"
+
 
 class ReLU(Layer):
 
-    def __init__(self, parents=None):     
+    def __init__(self, parents=None, layer_id=None):     
         
         self.out = None
-        super().__init__([parents])
+        super().__init__([parents], layer_id=layer_id)
 
     def forward(self, x):
         """
@@ -156,6 +169,8 @@ class ReLU(Layer):
     def update(self, lr):
         pass
 
+    def __str__(self) -> str:
+        return f"ReLU{'' if self.id==None else ' ' + str(self.id)}"
 
 class Softmax(Layer):
     pass
@@ -163,9 +178,9 @@ class Softmax(Layer):
 class Addition(Layer):
 
 
-    def __init__(self, parents=None):
+    def __init__(self, parents=None, layer_id=None):
 
-        super().__init__(parents)
+        super().__init__(parents, layer_id=layer_id)
 
         self.layer1 = parents[0]
         self.layer2 = parents[1]
@@ -197,24 +212,29 @@ class Addition(Layer):
         Update parameters after self.backward() w.r.t. given learning rate (lr)
         """
         return
+    
+    def __str__(self) -> str:
+        return f"Addition{'' if self.id==None else ' ' + str(self.id)}"
 
 
 class MSE_Loss(Loss):
 
 
-    def __init__(self, parents=None):
+    def __init__(self, parents=None, layer_id=None):
 
-        super().__init__([parents])
+        super().__init__([parents], layer_id=layer_id)
 
 
-    def forward(self, y_pred, target):
+    def forward(self, y_pred: np.ndarray, target: np.ndarray):
         """
         y_tuple = (y_pred, y_target) 
         """
         
         self.y_pred = y_pred
         self.y_target = target
-        return 0.5*np.linalg.norm(self.y_pred - self.y_target)**2
+
+        self.out = (1 / target.shape[0])*np.linalg.norm(self.y_pred - self.y_target)**2
+        return self.out
     
     def backward(self):
 
@@ -226,3 +246,6 @@ class MSE_Loss(Loss):
     
     def update(self, lr):
         pass
+
+    def __str__(self) -> str:
+        return f"MSE Loss{'' if self.id==None else ' ' + str(self.id)}"
