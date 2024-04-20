@@ -157,3 +157,5 @@ cython_debug/
 reports/
 dataset/
 prototype/
+face_orientation/
+cmu+face+images/
