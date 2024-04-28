@@ -2,6 +2,7 @@ import numpy as np
 import os
 import shutil
 from neural_network.utils import one_hot_vector
+from data_processing.utils import PCA
 from PIL import Image
 
 
@@ -29,7 +30,11 @@ class Dataset:
         for human in os.listdir(path):
             if not human.startswith("."):
                 for image in os.listdir(os.path.join(path, human)):
-                    if image.endswith("4.pgm"):
+                    if (
+                        image.endswith(".pgm")
+                        and not image.endswith("4.pgm")
+                        and not image.endswith("2.pgm")
+                    ):
                         key = image.split("_")[1]
                         data_dict[key].append(os.path.join(path, human, image))
 
@@ -80,6 +85,43 @@ class Dataset:
             self.mean, self.std = mean, std
 
         self.data = (self.data - self.mean) / self.std
+
+
+class PCADataset(Dataset):
+    def __init__(self, path: str = None, k: int = None):
+        super().__init__(path)
+        self.orig_shape = self.data[0].shape
+        self._pca(k)
+
+    def _pca(self, k: int = None):
+        self.data = self.data.reshape(self.data.shape[0], -1)
+        self.center, self.lambdas, self.vt, self.eig_idx = PCA(
+            self.data, k, self.data[0].shape
+        )
+
+        if k:
+            self.eig_idx = k
+
+        coeffs = self.data @ self.vt[: self.eig_idx].T
+        self.data = coeffs.reshape(-1, self.eig_idx, 1)
+
+        # Compute coefficients and reconstruct image
+        # coeffs = X[0].reshape((1, -1)) @ vt[:eig_idx].T
+        # recon = coeffs @ vt[:eig_idx]
+
+    def __getitem__(self, idx):
+        return (
+            self.data[idx],
+            one_hot_vector(self.label[idx], length=len(self.keys)),
+        )
+
+    def get_reconstructed_image(self, idx):
+        print(self.data[idx].shape)
+        print(self.vt[: self.eig_idx].shape)
+        print(self.orig_shape)
+        return (self.data[idx].T @ self.vt[: self.eig_idx]).reshape(
+            self.orig_shape
+        ) + self.center.reshape(self.orig_shape)
 
 
 def train_test_split(dataset: Dataset, ratios=(0.8, 0.0, 0.2)):
