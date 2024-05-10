@@ -10,16 +10,25 @@ class Dataset:
     def __init__(
         self,
         path: str = None,
+        flatten: bool = True
     ):
         if path:
             self.data, self.label, self.keys = self._read_data(path)
 
-    def __getitem__(self, idx):
-        return (
-            self.data[idx].reshape(self.data[idx].shape[-2] * self.data[idx].shape[-1]),
-            one_hot_vector(self.label[idx], length=len(self.keys)),
-        )
+        self.flatten = flatten
 
+    def __getitem__(self, idx):
+        if self.flatten:
+            return (
+                self.data[idx].reshape(self.data[idx].shape[-2] * self.data[idx].shape[-1]),
+                one_hot_vector(self.label[idx], length=len(self.keys)),
+            )
+        else:
+            return (
+                self.data[idx].reshape(-1, 1, self.data[idx].shape[-2], self.data[idx].shape[-1]),
+                one_hot_vector(self.label[idx], length=len(self.keys)),
+            )
+        
     def __len__(self):
         return len(self.data)
 
@@ -135,19 +144,19 @@ def train_test_split(dataset: Dataset, ratios=(0.8, 0.0, 0.2)):
     # train_idxs = np.random.choice(range(len(dataset.data)))
     train_idx = int(ratios[0] * len(dataset))
     validation_idx = int((ratios[0] + ratios[1]) * len(dataset))
-    train_dataset = Dataset()
+    train_dataset = Dataset(flatten=dataset.flatten)
     train_dataset.data = dataset.data[:train_idx]
     train_dataset.label = dataset.label[:train_idx]
     train_dataset.keys = dataset.keys
     train_dataset.normalize()
 
-    validation_dataset = Dataset()
+    validation_dataset = Dataset(flatten=dataset.flatten)
     validation_dataset.data = dataset.data[train_idx:validation_idx]
     validation_dataset.label = dataset.label[train_idx:validation_idx]
     validation_dataset.keys = dataset.keys
     validation_dataset.normalize(train_dataset.mean, train_dataset.std)
 
-    test_dataset = Dataset()
+    test_dataset = Dataset(flatten=dataset.flatten)
     test_dataset.data = dataset.data[validation_idx:]
     test_dataset.label = dataset.label[validation_idx:]
     test_dataset.keys = dataset.keys
