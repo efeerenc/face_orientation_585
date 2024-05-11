@@ -98,6 +98,49 @@ class Dataset:
         self.data = (self.data - self.mean) / self.std
 
 
+class NMFDataset(Dataset):
+    def __init__(self, path: str = None):
+        super().__init__(path)
+
+    def nmf(self, k: int = None, iterations: int = None):
+        
+        self.data = self.data.reshape(self.data.shape[0], -1)
+        self.nnmf_scaler = np.sqrt(np.mean(self.data)/self.data.shape[0])
+        self.nnmf_loss = []
+
+        # Initialize non-negative matrices
+        self.W = abs(np.random.standard_normal((self.data.shape[0], k)))*self.nnmf_scaler
+        self.H = abs(np.random.standard_normal((k, self.data.shape[-1])))*self.nnmf_scaler
+
+        for iteration in tqdm(range(iterations)):
+            W_numerator = np.matmul(self.data, self.H.T)
+            W_denominator = np.matmul(np.matmul(self.W, self.H), self.H.T)
+            W_alpha = np.divide(W_numerator, W_denominator)
+            
+            self.W = self.W*W_alpha
+            
+            H_numerator = np.matmul(self.W.T, self.data)
+            H_denominator = np.matmul(np.matmul(self.W.T, self.W), self.H)
+            H_alpha = np.divide(H_numerator, H_denominator)
+            
+            self.H = self.H*H_alpha
+            
+            self.nnmf_loss.append(np.linalg.norm(self.data - np.matmul(self.W, self.H), "fro"))
+
+        self.data = self.W.reshape(-1, k, 1)
+
+    def __getitem__(self, idx):
+        return (
+            self.data[idx],
+            one_hot_vector(self.label[idx], length=len(self.keys)),
+        )
+
+    def get_reconstructed_image(self, idx):
+        coeffs = self.W[idx, :].reshape(1, -1)
+        recon = np.matmul(coeffs, self.H)
+        return recon
+
+
 class PCADataset(Dataset):
     def __init__(self, path: str = None, k: int = None):
         super().__init__(path)
@@ -224,3 +267,7 @@ def k_fold_cross_validation(k: int, model: NeuralNetwork, dataset, epochs: int =
         train_dataset, validation_dataset, _ = train_test_split(dataset, ratios=((k - 1) / k, 1 / k, 0), mode="shift", shift=len(dataset) // k)
         result = train(model, train_dataset, validation_dataset, epochs, lr, validation_period, seed+fold)
         results.append(result)
+
+
+def backward_feature_selection(model, features):
+    pass
