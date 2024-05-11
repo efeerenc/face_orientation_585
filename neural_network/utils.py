@@ -1,4 +1,7 @@
 import numpy as np
+import stats
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 def weight_init(input_size, output_size, init_type="he"):
@@ -17,3 +20,4 @@ def one_hot_vector(x, length=4):
     vec = np.zeros((length, 1))
     vec[x] = 1
     return vec
+

@@ -104,9 +104,21 @@ class NMFDataset(Dataset):
         super().__init__(path)
         self.flatten = flatten
         self.selected_indices = np.arange(64)
+    
+    def update(self):
+        W_numerator = np.matmul(self.data, self.H.T)
+        W_denominator = np.matmul(np.matmul(self.W, self.H), self.H.T)
+        W_alpha = np.divide(W_numerator, W_denominator)
         
+        self.W = self.W*W_alpha
+        
+        H_numerator = np.matmul(self.W.T, self.data)
+        H_denominator = np.matmul(np.matmul(self.W.T, self.W), self.H)
+        H_alpha = np.divide(H_numerator, H_denominator)
+        
+        self.H = self.H*H_alpha
 
-    def nmf(self, k: int = None, iterations: int = None):
+    def nmf(self, k: int = None, convergence: float = 0.9999):
         
         self.data = self.data.reshape(self.data.shape[0], -1)
         self.nnmf_scaler = np.sqrt(np.mean(self.data)/self.data.shape[0])
@@ -116,19 +128,15 @@ class NMFDataset(Dataset):
         self.W = abs(np.random.standard_normal((self.data.shape[0], k)))*self.nnmf_scaler
         self.H = abs(np.random.standard_normal((k, self.data.shape[-1])))*self.nnmf_scaler
 
-        for iteration in tqdm(range(iterations)):
-            W_numerator = np.matmul(self.data, self.H.T)
-            W_denominator = np.matmul(np.matmul(self.W, self.H), self.H.T)
-            W_alpha = np.divide(W_numerator, W_denominator)
+        self.nnmf_loss.append(np.linalg.norm(self.data - np.matmul(self.W, self.H), "fro"))
+
+        self.update()
+
+        self.nnmf_loss.append(np.linalg.norm(self.data - np.matmul(self.W, self.H), "fro"))
+
+        while self.nnmf_loss[-1]/self.nnmf_loss[-2] < convergence:
             
-            self.W = self.W*W_alpha
-            
-            H_numerator = np.matmul(self.W.T, self.data)
-            H_denominator = np.matmul(np.matmul(self.W.T, self.W), self.H)
-            H_alpha = np.divide(H_numerator, H_denominator)
-            
-            self.H = self.H*H_alpha
-            
+            self.update()
             self.nnmf_loss.append(np.linalg.norm(self.data - np.matmul(self.W, self.H), "fro"))
 
         self.data = self.W.reshape(-1, k, 1)
@@ -209,16 +217,19 @@ def train_test_split(dataset: Dataset, ratios=(0.8, 0.0, 0.2), mode: str ="shuff
     train_dataset.data = dataset.data[:train_idx]
     train_dataset.label = dataset.label[:train_idx]
     train_dataset.keys = dataset.keys
-    train_dataset.normalize()
+    if dataset_type != "nmf":
+        train_dataset.normalize()
 
     if dataset_type == "nmf":
         validation_dataset = NMFDataset(flatten=dataset.flatten)
     else:
         validation_dataset = Dataset(flatten=dataset.flatten)
+        
     validation_dataset.data = dataset.data[train_idx:validation_idx]
     validation_dataset.label = dataset.label[train_idx:validation_idx]
     validation_dataset.keys = dataset.keys
-    validation_dataset.normalize(train_dataset.mean, train_dataset.std)
+    if dataset_type != "nmf":
+        validation_dataset.normalize(train_dataset.mean, train_dataset.std)
 
     if dataset_type == "nmf":
         test_dataset = NMFDataset(flatten=dataset.flatten)
@@ -227,7 +238,8 @@ def train_test_split(dataset: Dataset, ratios=(0.8, 0.0, 0.2), mode: str ="shuff
     test_dataset.data = dataset.data[validation_idx:]
     test_dataset.label = dataset.label[validation_idx:]
     test_dataset.keys = dataset.keys
-    test_dataset.normalize(train_dataset.mean, train_dataset.std)
+    if dataset_type != "nmf":
+        test_dataset.normalize(train_dataset.mean, train_dataset.std)
 
     return train_dataset, validation_dataset, test_dataset
 
