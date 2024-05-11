@@ -262,6 +262,14 @@ def train(model: NeuralNetwork, train_dataset: Dataset, validation_dataset: Data
 
 def k_fold_cross_validation(k: int, model: NeuralNetwork, dataset, epochs: int = 100, lr: float = 1e-3, validation_period: int = 5, seed: int = None):
     results = []
+
+    # shuffle once
+    shuffle_order = np.random.permutation(np.arange(len(dataset)))
+    dataset.data = dataset.data[shuffle_order].reshape(
+        -1, dataset.data.shape[-2], dataset.data.shape[-1]
+    )
+    dataset.label = dataset.label[shuffle_order].reshape(dataset.label.shape[-1])
+    
     for fold in range(k):
         model.init_weights()
         train_dataset, validation_dataset, _ = train_test_split(dataset, ratios=((k - 1) / k, 1 / k, 0), mode="shift", shift=len(dataset) // k)
