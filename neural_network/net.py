@@ -45,6 +45,10 @@ class NeuralNetwork:
         for layer in self._backward_order:
             layer.update(lr)
 
+    def init_weights(self):
+        for layer in self._forward_order:
+            layer.init_weights()
+
     def _topological_sort_forward(self):
         def _topological_sort_rec(layer: Layer, visited: set, stack: deque):
             visited.add(layer)

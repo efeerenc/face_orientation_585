@@ -40,6 +40,9 @@ class Layer:
     def update(self, lr):
         pass
 
+    def init_weights(self):
+        pass
+
 
 class Loss(Layer):
     def __init__(self, parents=None, layer_id=None):
@@ -54,7 +57,7 @@ class Linear(Layer):
 
         self.input_size = input_size
         self.output_size = output_size
-        self.W, self.b = weight_init(input_size, output_size)
+        self.init_weights()
         self.dW, self.db = 0, 0
         self.input = None
         self.dx = None
@@ -94,6 +97,8 @@ class Linear(Layer):
     def __str__(self):
         return f"Linear{'' if self.id==None else ' ' + str(self.id)}: ({self.input_size}, 1) -> ({self.output_size}, 1)"
 
+    def init_weights(self):
+        self.W, self.b = weight_init(self.input_size, self.output_size)
 
 class Conv2D(Layer):
 
@@ -106,14 +111,17 @@ class Conv2D(Layer):
         layer_id=None,
     ):
         super().__init__([parents], layer_id=layer_id)
-
+        self.kernel_shape = kernel_shape
         self.num_filters = kernel_shape.shape[0]
         self.in_channels = kernel_shape.shape[1]
         self.kernel_size = kernel_shape.shape[2] # assuming square kernels
         self.pad = pad
         self.stride = stride
 
-        self.W, self.b = convutils.kernel_init(kernel_shape)
+        self.init_weights()
+
+    def init_weights(self):
+        self.W, self.b = convutils.kernel_init(self.kernel_shape)
 
     def forward(self, x):
         """

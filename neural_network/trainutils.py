@@ -5,6 +5,7 @@ from neural_network.utils import one_hot_vector
 from data_processing.utils import PCA
 from PIL import Image
 from neural_network.net import NeuralNetwork
+from tqdm import tqdm
 
 
 class Dataset:
@@ -134,13 +135,20 @@ class PCADataset(Dataset):
         ) + self.center.reshape(self.orig_shape)
 
 
-def train_test_split(dataset: Dataset, ratios=(0.8, 0.0, 0.2)):
+def train_test_split(dataset: Dataset, ratios=(0.8, 0.0, 0.2), mode: str ="shuffle", shift: int = 0):
 
-    shuffle_order = np.random.permutation(np.arange(len(dataset)))
-    dataset.data = dataset.data[shuffle_order].reshape(
-        -1, dataset.data.shape[-2], dataset.data.shape[-1]
-    )
-    dataset.label = dataset.label[shuffle_order].reshape(dataset.label.shape[-1])
+    if mode == "shuffle":
+        shuffle_order = np.random.permutation(np.arange(len(dataset)))
+        dataset.data = dataset.data[shuffle_order].reshape(
+            -1, dataset.data.shape[-2], dataset.data.shape[-1]
+        )
+        dataset.label = dataset.label[shuffle_order].reshape(dataset.label.shape[-1])
+    elif mode == "shift":
+        shuffle_order = np.roll(np.arange(len(dataset)), shift)
+        dataset.data = dataset.data[shuffle_order].reshape(
+            -1, dataset.data.shape[-2], dataset.data.shape[-1]
+        )
+        dataset.label = dataset.label[shuffle_order].reshape(dataset.label.shape[-1])
 
     # train_idxs = np.random.choice(range(len(dataset.data)))
     train_idx = int(ratios[0] * len(dataset))
@@ -165,6 +173,54 @@ def train_test_split(dataset: Dataset, ratios=(0.8, 0.0, 0.2)):
 
     return train_dataset, validation_dataset, test_dataset
 
-def train(model: NeuralNetwork, train_dataset: Dataset, validation_dataset: Dataset = None, epochs: int = 100, lr: float = 1e-3):
-    
+def train(model: NeuralNetwork, train_dataset: Dataset, validation_dataset: Dataset = None, epochs: int = 100, lr: float = 1e-3, validation_period: int = 5, seed: int = None):
+    train_losses = []
+    validation_losses = []
+    train_confmats = []
+    validation_confmats = []
 
+    if seed is not None:
+        np.random.seed(seed)
+
+    pbar = tqdm(range(epochs))
+    for epoch in pbar:
+        train_loss = 0
+        train_confmat = np.zeros((len(train_dataset.keys), len(train_dataset.keys)))
+        for data, label in train_dataset:
+            #data = data.reshape(-1, 1)
+            out = model.forward(data)
+            #print(out)
+            loss = model.loss_layer.forward(out, label)
+            train_loss += loss
+            train_confmat[np.argmax(label), np.argmax(out)] += 1
+            model.backward()
+            model.step(lr=lr)
+        
+        if validation_dataset is not None and epoch % validation_period == 0:
+            validation_loss = 0
+            validation_confmat = np.zeros((len(validation_dataset.keys), len(validation_dataset.keys)))
+            for data, label in validation_dataset:
+                out = model.forward(data)
+                loss = model.loss_layer.forward(out, label)
+                validation_loss += loss
+                validation_confmat[np.argmax(label), np.argmax(out)] += 1
+                
+        train_loss = train_loss / len(train_dataset)
+        validation_loss = validation_loss / len(validation_dataset)
+        
+        train_losses.append(train_loss)
+        validation_losses.append(validation_loss)
+        train_confmats.append(train_confmat)
+        validation_confmats.append(validation_confmat)
+
+        pbar.set_description(str(train_loss))
+
+    return {"train_losses": train_losses, "validation_losses": validation_losses, "train_confmats": train_confmats, "validation_confmats": validation_confmats}
+
+def k_fold_cross_validation(k: int, model: NeuralNetwork, dataset, epochs: int = 100, lr: float = 1e-3, validation_period: int = 5, seed: int = None):
+    results = []
+    for fold in range(k):
+        model.init_weights()
+        train_dataset, validation_dataset, _ = train_test_split(dataset, ratios=((k - 1) / k, 1 / k, 0), mode="shift", shift=len(dataset) // k)
+        result = train(model, train_dataset, validation_dataset, epochs, lr, validation_period, seed+fold)
+        results.append(result)
