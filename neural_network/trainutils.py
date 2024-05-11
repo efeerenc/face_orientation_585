@@ -245,7 +245,7 @@ def train(model: NeuralNetwork, train_dataset: Dataset, validation_dataset: Data
         train_loss = 0
         train_confmat = np.zeros((len(train_dataset.keys), len(train_dataset.keys)))
         for data, label in train_dataset:
-            data = data.reshape(-1, 1)
+            #data = data.reshape(-1, 1)
             out = model.forward(data)
             loss = model.loss_layer.forward(out, label)
             train_loss += loss
@@ -257,7 +257,7 @@ def train(model: NeuralNetwork, train_dataset: Dataset, validation_dataset: Data
             validation_loss = 0
             validation_confmat = np.zeros((len(validation_dataset.keys), len(validation_dataset.keys)))
             for data, label in validation_dataset:
-                data = data.reshape(-1, 1)
+                #data = data.reshape(-1, 1)
                 out = model.forward(data)
                 loss = model.loss_layer.forward(out, label)
                 validation_loss += loss
@@ -278,13 +278,13 @@ def train(model: NeuralNetwork, train_dataset: Dataset, validation_dataset: Data
         validation_loss = 0
         validation_confmat = np.zeros((len(validation_dataset.keys), len(validation_dataset.keys)))
         for data, label in validation_dataset:
-            data = data.reshape(-1, 1)
+            #data = data.reshape(-1, 1)
             out = model.forward(data)
             loss = model.loss_layer.forward(out, label)
             validation_loss += loss
             validation_confmat[np.argmax(label), np.argmax(out)] += 1
-
-    return {"train_losses": train_losses, "validation_losses": validation_losses, "train_confmats": train_confmats, "validation_confmats": validation_confmats}
+    
+    return {"model": model, "train_losses": train_losses, "validation_losses": validation_losses, "train_confmats": train_confmats, "validation_confmats": validation_confmats}
 
 def k_fold_cross_validation(k: int, model: NeuralNetwork, dataset, epochs: int = 100, lr: float = 1e-3, validation_period: int = 5, seed: int = None, dataset_type="default"):
     results = []
@@ -295,11 +295,12 @@ def k_fold_cross_validation(k: int, model: NeuralNetwork, dataset, epochs: int =
         -1, dataset.data.shape[-2], dataset.data.shape[-1]
     )
     dataset.label = dataset.label[shuffle_order].reshape(dataset.label.shape[-1])
-    
+    #pbar = tqdm(range(k), desc="Folds")
     for fold in range(k):
+        print(f"Fold {fold}")
         model.init_weights()
         train_dataset, validation_dataset, _ = train_test_split(dataset, ratios=((k - 1) / k, 1 / k, 0), mode="shift", shift=len(dataset) // k, dataset_type=dataset_type)
-        result = train(model, train_dataset, validation_dataset, epochs, lr, validation_period, seed+fold if seed is not None else seed)
+        result = train(model, train_dataset, validation_dataset, epochs, lr, validation_period, seed+fold if seed is not None else seed, verbose=True)
         results.append(result)
     
     return results
