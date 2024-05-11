@@ -5,6 +5,7 @@ from neural_network.utils import one_hot_vector
 from data_processing.utils import PCA
 from PIL import Image
 from neural_network.net import NeuralNetwork
+from neural_network.layer import *
 from tqdm import tqdm
 
 
@@ -99,8 +100,11 @@ class Dataset:
 
 
 class NMFDataset(Dataset):
-    def __init__(self, path: str = None):
+    def __init__(self, path: str = None, flatten=True):
         super().__init__(path)
+        self.flatten = flatten
+        self.selected_indices = np.arange(64)
+        
 
     def nmf(self, k: int = None, iterations: int = None):
         
@@ -128,10 +132,11 @@ class NMFDataset(Dataset):
             self.nnmf_loss.append(np.linalg.norm(self.data - np.matmul(self.W, self.H), "fro"))
 
         self.data = self.W.reshape(-1, k, 1)
+        self.selected_indices = np.arange(k)
 
     def __getitem__(self, idx):
         return (
-            self.data[idx],
+            self.data[idx, self.selected_indices].reshape(len(self.selected_indices), 1),
             one_hot_vector(self.label[idx], length=len(self.keys)),
         )
 
@@ -178,7 +183,7 @@ class PCADataset(Dataset):
         ) + self.center.reshape(self.orig_shape)
 
 
-def train_test_split(dataset: Dataset, ratios=(0.8, 0.0, 0.2), mode: str ="shuffle", shift: int = 0):
+def train_test_split(dataset: Dataset, ratios=(0.8, 0.0, 0.2), mode: str ="shuffle", shift: int = 0, dataset_type="default"):
 
     if mode == "shuffle":
         shuffle_order = np.random.permutation(np.arange(len(dataset)))
@@ -196,19 +201,29 @@ def train_test_split(dataset: Dataset, ratios=(0.8, 0.0, 0.2), mode: str ="shuff
     # train_idxs = np.random.choice(range(len(dataset.data)))
     train_idx = int(ratios[0] * len(dataset))
     validation_idx = int((ratios[0] + ratios[1]) * len(dataset))
-    train_dataset = Dataset(flatten=dataset.flatten)
+    if dataset_type == "nmf":
+        train_dataset = NMFDataset(flatten=dataset.flatten)
+        train_dataset.flatten = dataset.flatten
+    else:
+        train_dataset = Dataset(flatten=dataset.flatten)
     train_dataset.data = dataset.data[:train_idx]
     train_dataset.label = dataset.label[:train_idx]
     train_dataset.keys = dataset.keys
     train_dataset.normalize()
 
-    validation_dataset = Dataset(flatten=dataset.flatten)
+    if dataset_type == "nmf":
+        validation_dataset = NMFDataset(flatten=dataset.flatten)
+    else:
+        validation_dataset = Dataset(flatten=dataset.flatten)
     validation_dataset.data = dataset.data[train_idx:validation_idx]
     validation_dataset.label = dataset.label[train_idx:validation_idx]
     validation_dataset.keys = dataset.keys
     validation_dataset.normalize(train_dataset.mean, train_dataset.std)
 
-    test_dataset = Dataset(flatten=dataset.flatten)
+    if dataset_type == "nmf":
+        test_dataset = NMFDataset(flatten=dataset.flatten)
+    else:
+        test_dataset = Dataset(flatten=dataset.flatten)
     test_dataset.data = dataset.data[validation_idx:]
     test_dataset.label = dataset.label[validation_idx:]
     test_dataset.keys = dataset.keys
@@ -216,7 +231,7 @@ def train_test_split(dataset: Dataset, ratios=(0.8, 0.0, 0.2), mode: str ="shuff
 
     return train_dataset, validation_dataset, test_dataset
 
-def train(model: NeuralNetwork, train_dataset: Dataset, validation_dataset: Dataset = None, epochs: int = 100, lr: float = 1e-3, validation_period: int = 5, seed: int = None):
+def train(model: NeuralNetwork, train_dataset: Dataset, validation_dataset: Dataset = None, epochs: int = 100, lr: float = 1e-3, validation_period: int = 5, seed: int = None, verbose=False):
     train_losses = []
     validation_losses = []
     train_confmats = []
@@ -225,14 +240,13 @@ def train(model: NeuralNetwork, train_dataset: Dataset, validation_dataset: Data
     if seed is not None:
         np.random.seed(seed)
 
-    pbar = tqdm(range(epochs))
+    pbar = tqdm(range(epochs)) if verbose else range(epochs)
     for epoch in pbar:
         train_loss = 0
         train_confmat = np.zeros((len(train_dataset.keys), len(train_dataset.keys)))
         for data, label in train_dataset:
-            #data = data.reshape(-1, 1)
+            data = data.reshape(-1, 1)
             out = model.forward(data)
-            #print(out)
             loss = model.loss_layer.forward(out, label)
             train_loss += loss
             train_confmat[np.argmax(label), np.argmax(out)] += 1
@@ -243,6 +257,7 @@ def train(model: NeuralNetwork, train_dataset: Dataset, validation_dataset: Data
             validation_loss = 0
             validation_confmat = np.zeros((len(validation_dataset.keys), len(validation_dataset.keys)))
             for data, label in validation_dataset:
+                data = data.reshape(-1, 1)
                 out = model.forward(data)
                 loss = model.loss_layer.forward(out, label)
                 validation_loss += loss
@@ -256,11 +271,12 @@ def train(model: NeuralNetwork, train_dataset: Dataset, validation_dataset: Data
         train_confmats.append(train_confmat)
         validation_confmats.append(validation_confmat)
 
-        pbar.set_description(str(train_loss))
+        if verbose:
+            pbar.set_description(str(train_loss))
 
     return {"train_losses": train_losses, "validation_losses": validation_losses, "train_confmats": train_confmats, "validation_confmats": validation_confmats}
 
-def k_fold_cross_validation(k: int, model: NeuralNetwork, dataset, epochs: int = 100, lr: float = 1e-3, validation_period: int = 5, seed: int = None):
+def k_fold_cross_validation(k: int, model: NeuralNetwork, dataset, epochs: int = 100, lr: float = 1e-3, validation_period: int = 5, seed: int = None, dataset_type="default"):
     results = []
 
     # shuffle once
@@ -272,10 +288,77 @@ def k_fold_cross_validation(k: int, model: NeuralNetwork, dataset, epochs: int =
     
     for fold in range(k):
         model.init_weights()
-        train_dataset, validation_dataset, _ = train_test_split(dataset, ratios=((k - 1) / k, 1 / k, 0), mode="shift", shift=len(dataset) // k)
-        result = train(model, train_dataset, validation_dataset, epochs, lr, validation_period, seed+fold)
+        train_dataset, validation_dataset, _ = train_test_split(dataset, ratios=((k - 1) / k, 1 / k, 0), mode="shift", shift=len(dataset) // k, dataset_type=dataset_type)
+        result = train(model, train_dataset, validation_dataset, epochs, lr, validation_period, seed+fold if seed is not None else seed)
         results.append(result)
+    
+    return results
+
+def create_model(input_shape: int, output_shape: int, min_size=4):
+    linear1 = Linear(input_shape, max(input_shape//2, min_size))
+    relu1 = ReLU(linear1)
+
+    linear2 = Linear(max(input_shape//2, min_size), max(input_shape//4, min_size), relu1)
+    relu2 = ReLU(linear2)
+
+    linear3 = Linear(max(input_shape//4, min_size), max(input_shape//8, min_size), relu2)
+    relu3 = ReLU(linear3)
+
+    linear4 = Linear(max(input_shape//8, min_size), output_shape, relu3)
+    softmaxlayer = Softmax(linear4)
+
+    loss_layer = CrossEntropy(softmaxlayer)
+
+    model = NeuralNetwork(linear1, softmaxlayer, loss_layer)
+    return model
 
 
-def backward_feature_selection(model, features):
-    pass
+def backward_feature_selection(dataset, k_fold=5, idx_amount=4):
+
+    model = create_model(dataset.data.shape[-2], 4)
+    init_results = k_fold_cross_validation(k_fold, model, dataset, epochs=1)
+    init_val_loss = sum([d["validation_losses"][-1] for d in init_results])/len(init_results)
+    remaining_indices = np.arange(dataset.data.shape[-2])
+    model = create_model(dataset.data.shape[-2], 4)
+
+    prev_fold_loss = init_val_loss
+    min_fold_loss, worst_idx = backward_feature_selection_step(model, dataset, remaining_indices)
+    print(len(remaining_indices), "min:", min_fold_loss, "prev", prev_fold_loss, worst_idx)
+    
+
+    while (min_fold_loss < prev_fold_loss) and (len(remaining_indices) > idx_amount):
+        
+        remaining_indices = np.delete(remaining_indices, worst_idx)
+        
+        model = create_model(len(remaining_indices), 4)
+        prev_fold_loss = min_fold_loss
+
+        min_fold_loss, worst_idx = backward_feature_selection_step(model, dataset, remaining_indices)
+        print(len(remaining_indices), "min:", min_fold_loss, "prev", prev_fold_loss, worst_idx)
+    
+    return remaining_indices
+
+
+def backward_feature_selection_step(model, dataset, remaining_indices, k_fold=5, idx_amount=4):
+    
+    np.random.shuffle(remaining_indices)
+    cur_iter_remaining_indices = np.copy(remaining_indices)
+    max_fold_loss, min_fold_loss = -np.inf, np.inf
+    worst_idx = None
+    print(int(np.ceil(len(cur_iter_remaining_indices)/idx_amount)))
+    for idx in range(int(np.ceil(len(cur_iter_remaining_indices)/idx_amount))):
+        # random_indices = np.random.choice(cur_iter_remaining_indices, idx_amount)
+        random_indices = cur_iter_remaining_indices[idx*idx_amount:min((idx+1)*idx_amount, len(cur_iter_remaining_indices))]
+        dataset.selected_indices = np.delete(remaining_indices, random_indices)
+        fold_results = k_fold_cross_validation(k_fold, model, dataset, epochs=1)
+        fold_val_loss = sum([d["validation_losses"][-1] for d in fold_results])/len(fold_results)
+        
+        if fold_val_loss > max_fold_loss:
+            max_fold_loss = fold_val_loss
+            worst_idx = random_indices
+        
+        min_fold_loss = min(min_fold_loss, fold_val_loss)
+        print(f"current min: {min_fold_loss}, new loss: {fold_val_loss}")
+        
+    
+    return min_fold_loss, worst_idx
