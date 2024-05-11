@@ -4,7 +4,6 @@ import shutil
 from neural_network.utils import one_hot_vector
 from data_processing.utils import PCA
 from PIL import Image
-from tqdm import tqdm
 
 
 class Dataset:
@@ -207,6 +206,10 @@ def train_test_split(dataset: Dataset, ratios=(0.8, 0.0, 0.2)):
     test_dataset.normalize(train_dataset.mean, train_dataset.std)
 
     return train_dataset, validation_dataset, test_dataset
+
+def train(model: NeuralNetwork, train_dataset: Dataset, validation_dataset: Dataset = None, epochs: int = 100, lr: float = 1e-3):
+    
+
 
 
 def backward_feature_selection(model, features):
