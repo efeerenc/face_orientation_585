@@ -274,6 +274,16 @@ def train(model: NeuralNetwork, train_dataset: Dataset, validation_dataset: Data
         if verbose:
             pbar.set_description(str(train_loss))
 
+    if validation_dataset is not None:
+        validation_loss = 0
+        validation_confmat = np.zeros((len(validation_dataset.keys), len(validation_dataset.keys)))
+        for data, label in validation_dataset:
+            data = data.reshape(-1, 1)
+            out = model.forward(data)
+            loss = model.loss_layer.forward(out, label)
+            validation_loss += loss
+            validation_confmat[np.argmax(label), np.argmax(out)] += 1
+
     return {"train_losses": train_losses, "validation_losses": validation_losses, "train_confmats": train_confmats, "validation_confmats": validation_confmats}
 
 def k_fold_cross_validation(k: int, model: NeuralNetwork, dataset, epochs: int = 100, lr: float = 1e-3, validation_period: int = 5, seed: int = None, dataset_type="default"):
